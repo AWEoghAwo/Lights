@@ -1,0 +1,55 @@
+Configs: {
+	LightsConfig: {
+		DisplayName: 客户端配置
+
+		UseLight: {
+			Label: 开启光照
+			Tooltip: ""
+		}
+
+		lightIntensity: {
+			Label: 光照强度
+			Tooltip: ""
+		}
+
+		dayColor: {
+			Label: 日光色
+			Tooltip:
+				'''
+				经典的: 中午的灯光是黄色的
+				选择: 中午的光是白色的
+				'''
+		}
+
+		moonlightIntensity: {
+			Label: 月光强度
+			Tooltip: ""
+		}
+
+		shadowIntensity: {
+			Label: 阴影强度
+			Tooltip: ""
+		}
+
+		UseBloom: {
+			Label: 开启外发光
+			Tooltip: ""
+		}
+
+		BloomIntensity: {
+			Label: 外发光强度
+			Tooltip: ""
+		}
+
+		BloomCounts: {
+			Label: Bloom迭代次数
+			Tooltip: ""
+		}
+
+		Headers: {
+			Lighting: 灯光与阴影
+			Bloom: Bloom
+			// Presets: Presets Header
+		}
+	}
+}

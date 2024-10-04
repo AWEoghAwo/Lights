@@ -1,0 +1,55 @@
+Configs: {
+	LightsConfig: {
+		DisplayName: Konfiguracja klienta
+
+		UseLight: {
+			Label: Użyj Oświetlenia
+			Tooltip: ""
+		}
+
+		lightIntensity: {
+			Label: Intensywność światła
+			Tooltip: ""
+		}
+
+		dayColor: {
+			Label: Barwa światła dziennego
+			Tooltip:
+				'''
+				Classic: Światła dzienne jest żółte
+				Alternate: Światła dzienne jest białe
+				'''
+		}
+
+		moonlightIntensity: {
+			Label: Intensywność światła księżyca
+			Tooltip: ""
+		}
+
+		shadowIntensity: {
+			Label: Intensywność cienia
+			Tooltip: ""
+		}
+
+		UseBloom: {
+			Label: Użyj poświaty światła
+			Tooltip: ""
+		}
+
+		BloomIntensity: {
+			Label: Intensywność poświaty światła
+			Tooltip: ""
+		}
+
+		BloomCounts: {
+			Label: Liczba poświaty światła
+			Tooltip: ""
+		}
+
+		Headers: {
+			Lighting: Światło i cienie
+			Bloom: Poświaty światła
+			// Presets: Presets Header
+		}
+	}
+}

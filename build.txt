@@ -1,0 +1,5 @@
+displayName = Lights And Shadows
+author = yiyang233
+version = 1.4
+side = Client
+buildIgnore = .sln, *.csproj, *.user, obj\*, bin\*, .vs\*, Properties\*

@@ -1,0 +1,4 @@
+﻿提供光影效果。
+在ModConfig里可以设置一些值。
+
+Adds lighting and shadow effects, which can be adjusted in the Mod Config.
