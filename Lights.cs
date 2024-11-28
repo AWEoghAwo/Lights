@@ -148,6 +148,10 @@ namespace Lights
             SpriteBatch spriteBatch = Main.spriteBatch;
             if (!CaptureManager.Instance.IsCapturing)
             {
+                if (Main.screenTarget.RenderTargetUsage == RenderTargetUsage.DiscardContents)
+                {
+                    NewScreenTarget();
+                }
                 if (screen == null)
                 {
                     ResetRenderTarget();
@@ -246,7 +250,6 @@ namespace Lights
 
         private void UseLightAndShadow(GraphicsDevice gd, SpriteBatch sb, RenderTarget2D rt1, RenderTarget2D rt2)
         {
-
             #region Create Light in (RT2D)light
             gd.SetRenderTarget(light);
             gd.Clear(Color.Black);
