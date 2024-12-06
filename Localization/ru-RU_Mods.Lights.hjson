@@ -1,0 +1,55 @@
+Configs: {
+	LightsConfig: {
+		DisplayName: Конфигурация
+
+		UseLight: {
+			Label: Включить освещение Lights and Shadows
+			Tooltip: ""
+		}
+
+		lightIntensity: {
+			Label: Интенсивность света
+			Tooltip: ""
+		}
+
+		dayColor: {
+			Label: Цвет солнечного света
+			Tooltip:
+				'''
+				Classic (классический) — жёлтый цвет
+				Alternate (альтернативный) — белый цвет
+				'''
+		}
+
+		moonlightIntensity: {
+			Label: Интенсивность лунного света
+			Tooltip: ""
+		}
+
+		shadowIntensity: {
+			Label: Интенсивность теней
+			Tooltip: ""
+		}
+
+		UseBloom: {
+			Label: Рассеивание света
+			Tooltip: ""
+		}
+
+		BloomIntensity: {
+			Label: Интенсивность рассеивания света
+			Tooltip: ""
+		}
+
+		BloomCounts: {
+			Label: Плавность рассеивания света
+			Tooltip: ""
+		}
+
+		Headers: {
+			Lighting: Свет и тени
+			Bloom: Рассеивание света
+			Presets: Предустановленные настройки
+		}
+	}
+}
