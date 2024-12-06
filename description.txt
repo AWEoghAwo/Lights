@@ -2,3 +2,7 @@
 在ModConfig里可以设置一些值。
 
 Adds lighting and shadow effects, which can be adjusted in the Mod Config.
+
+[i:149]Credits:
+•Gryfu (Polish translation)
+•Alino4kaHvoshch & xenofite (Russian translation)
