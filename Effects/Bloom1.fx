@@ -8,6 +8,24 @@ sampler2D uImage1 = sampler_state
     AddressU = Clamp;
     AddressV = Clamp;
 };
+texture2D maskTexture;
+sampler2D maskSampler = sampler_state
+{
+    Texture = <maskTexture>;
+    MinFilter = Linear;
+    MagFilter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
+};
+float2 uMaskOffset;
+float4 KawaseMask(float2 coords : TEXCOORD0) : COLOR0
+{
+    float4 color = tex2D(uImage0, coords + float2(-uMaskOffset.x, -uMaskOffset.y));
+    color += tex2D(uImage0, coords + float2(uMaskOffset.x, -uMaskOffset.y));
+    color += tex2D(uImage0, coords + float2(-uMaskOffset.x, uMaskOffset.y));
+    color += tex2D(uImage0, coords + float2(uMaskOffset.x, uMaskOffset.y));
+    return color * 0.25;
+}
 float m;
 float luminance(float4 c)
 {
@@ -20,36 +38,30 @@ float luminance2(float4 c)
 float4 PixelShaderFunction(float2 coords : TEXCOORD0) : COLOR0 //提取明度超过m的部分
 {
     float4 c = tex2D(uImage0,coords);
-    if (luminance(c) > m)
-            return c;
-        else
-            return float4(0, 0, 0, 0);
+    return c * smoothstep(-0.23,0.23,luminance(c) - m);
 }
 
 float p;
 float m2;
-float2 uScreenResolution;
-float4 Blend(float2 coords : TEXCOORD0):COLOR0
+float4 Blend(float2 coords : TEXCOORD0) : COLOR0
 {
-    float4 c1 = tex2D(uImage0, coords);
-    
+    float4 original = tex2D(uImage1, coords);
+    float3 bloomLight = tex2D(uImage0, coords).rgb * m2;
+    float3 mask = tex2D(maskSampler, coords).rgb;
+    float brightness = max(mask.r, max(mask.g, mask.b));
 
-    float2 dxy = 1 / uScreenResolution.xy;
-    float4 c2 = tex2D(uImage1, coords);
-    float4 orig = c2;
-    
-
-    float lum = luminance2(c2);
-    float3 alpha = pow(1-lum, p);
-    alpha = clamp(alpha, 0, 1);
-
-    float4 bloomLight = c1 * m2;
-    bloomLight.rgb*=alpha;
-    float4 returnColor = orig + bloomLight ;
-    return returnColor;
+    float attenuation1 = pow(saturate(1 - brightness), p);
+    float attenuation2 = 1 - smoothstep(0.2, 0.7, brightness);
+    float3 result = original.rgb + bloomLight * lerp(attenuation1,attenuation2,brightness);
+    return float4(result,original.a);
 }
+
 technique Technique1
 {
+    pass KawaseMask
+    {
+        PixelShader = compile ps_2_0 KawaseMask();
+    }
 	pass Bloom
 	{
 		PixelShader = compile ps_2_0 PixelShaderFunction();

@@ -42,7 +42,7 @@ Configs: {
 		}
 
 		BloomCounts: {
-			Label: Bloom迭代次数
+			Label: Bloom等级
 			Tooltip: ""
 		}
 

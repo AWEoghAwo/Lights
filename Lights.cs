@@ -1,4 +1,4 @@
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using ReLogic.Content;
 using System;
@@ -35,7 +35,13 @@ namespace Lights
 
         public RenderTarget2D bloom;
 
-        public RenderTarget2D saveImage;
+        private readonly RenderTarget2D[] bloomMipTargets = new RenderTarget2D[4];
+
+        private Effect dualBlur;
+
+        private RenderTarget2D bloomMask;
+
+        public RenderTarget2D shadow;
 
         public static Effect Light;
 
@@ -45,7 +51,7 @@ namespace Lights
 
         public static int quality = 3;
 
-        public static int bloomCounts = 4;
+        public static int bloomLevel = 2;
 
         public delegate void orig_EndCapture(object self, RenderTarget2D finalTexture, RenderTarget2D screenTarget1, RenderTarget2D screenTarget2, Color clearColor);
 
@@ -54,19 +60,18 @@ namespace Lights
             screen?.Dispose();
             light?.Dispose();
             bloom?.Dispose();
-
+            bloomMask?.Dispose();
+            bloomMask = null;
+            for (int i = 0; i < bloomMipTargets.Length; i++)
+            {
+                bloomMipTargets[i]?.Dispose();
+                bloomMipTargets[i] = null;
+            }
+            shadow?.Dispose();
             GraphicsDevice graphicsDevice = Main.graphics.GraphicsDevice;
             screen = new RenderTarget2D(graphicsDevice, graphicsDevice.PresentationParameters.BackBufferWidth / 3, graphicsDevice.PresentationParameters.BackBufferHeight / 3, false, graphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.None);
             light = new RenderTarget2D(graphicsDevice, graphicsDevice.PresentationParameters.BackBufferWidth, graphicsDevice.PresentationParameters.BackBufferHeight, false, graphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.None);
-            bloom = new RenderTarget2D(graphicsDevice, graphicsDevice.PresentationParameters.BackBufferWidth / 3, graphicsDevice.PresentationParameters.BackBufferHeight / 3, false, graphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.None);
-
-        }
-        public void NewScreenTarget()
-        {
-            GraphicsDevice graphicsDevice = Main.graphics.GraphicsDevice;
-            //Set Main.screenTarget.RenderTargetUsage to PreserveContents
-            Main.screenTarget.Dispose();
-            Main.screenTarget = new RenderTarget2D(graphicsDevice, graphicsDevice.PresentationParameters.BackBufferWidth, graphicsDevice.PresentationParameters.BackBufferHeight, false, graphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.None, 0, RenderTargetUsage.PreserveContents);
+            shadow = new RenderTarget2D(graphicsDevice, graphicsDevice.PresentationParameters.BackBufferWidth / 3, graphicsDevice.PresentationParameters.BackBufferHeight / 3, false, graphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.None);
 
         }
         public override void Load()
@@ -86,6 +91,7 @@ namespace Lights
                 Light = ModContent.Request<Effect>("Lights/Effects/Light", AssetRequestMode.ImmediateLoad).Value;
                 Shadow = ModContent.Request<Effect>("Lights/Effects/Shadow", AssetRequestMode.ImmediateLoad).Value;
                 Bloom = ModContent.Request<Effect>("Lights/Effects/Bloom1", AssetRequestMode.ImmediateLoad).Value;
+                dualBlur = ModContent.Request<Effect>("Lights/Effects/DualBlur", AssetRequestMode.ImmediateLoad).Value;
 
                 MonoModHooks.Add(detourMethod, FilterManager_EndCapture);
 
@@ -96,51 +102,28 @@ namespace Lights
         {
             orig(self, width, height);
             ResetRenderTarget();
-            NewScreenTarget();
         }
 
         
 
         public override void Unload()
-        {
-            //On_FilterManager.remove_EndCapture(new hook_EndCapture(FilterManager_EndCapture));
-            //Main.remove_OnResolutionChanged((Action<Vector2>)Main_OnResolutionChanged);
-
-            //removed the above lines as there doesn't seem to be a MonoModHooks.Remove or anything to that effect, and supposedly tml automatically disables a mod's detours on unload
+        {   
             Light = null;
             Shadow = null;
             Bloom = null;
+            dualBlur = null;
+            bloom?.Dispose();
+            bloomMask?.Dispose();
+            bloomMask = null;
+            for (int i = 0; i < bloomMipTargets.Length; i++)
+            {
+                bloomMipTargets[i]?.Dispose();
+                bloomMipTargets[i] = null;
+            }
             screen = null;
             light = null;
             bloom = null;
         }
-
-        //All this CaputreInterface stuff was an attempt at fixing the bug where bloom breaks upon taking a screenshot with the ingame camera. No luck.
-
-        /*public void CaptureInterface_Update()
-        {
-            screen = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth / 3, Main.screenHeight / 3);
-            light = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth, Main.screenHeight);
-            bloom = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth / 3, Main.screenHeight / 3);
-			//orig.Invoke(self);
-        }*/
-
-        /*private void CaptureInterface_EndCamera()
-        {
-            screen = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth / 3, Main.screenHeight / 3);
-            light = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth, Main.screenHeight);
-            bloom = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth / 3, Main.screenHeight / 3);
-        }*/
-
-        /*private void CaptureCamera_FinishCapture(ILContext il)
-        {
-            ILCursor c = new ILCursor(il);
-
-            screen = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth / 3, Main.screenHeight / 3);
-            light = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth, Main.screenHeight);
-            bloom = new RenderTarget2D(Main.graphics.GraphicsDevice, Main.screenWidth / 3, Main.screenHeight / 3);
-			//orig.Invoke(self);
-        }*/
 
         public void FilterManager_EndCapture(orig_EndCapture orig, FilterManager self, RenderTarget2D finalTexture, RenderTarget2D screenTarget1, RenderTarget2D screenTarget2, Color clearColor)
         {
@@ -148,10 +131,6 @@ namespace Lights
             SpriteBatch spriteBatch = Main.spriteBatch;
             if (!CaptureManager.Instance.IsCapturing)
             {
-                if (Main.screenTarget.RenderTargetUsage == RenderTargetUsage.DiscardContents)
-                {
-                    NewScreenTarget();
-                }
                 if (screen == null)
                 {
                     ResetRenderTarget();
@@ -170,74 +149,98 @@ namespace Lights
             orig.Invoke(self, finalTexture, screenTarget1, screenTarget2, clearColor);
         }
 
-        private void UseBloom(GraphicsDevice graphicsDevice, RenderTarget2D rt1, RenderTarget2D rt2)
+        private void UseBloom(GraphicsDevice graphicsDevice, RenderTarget2D screenTarget, RenderTarget2D screenTargetSwap)
         {
-            if (screen.Width != rt1.Width / 3 || screen.Height != rt1.Height / 3)
+            int levels = Math.Clamp(bloomLevel, 1, bloomMipTargets.Length - 1) + 1;
+            if (bloom == null || bloom.IsDisposed || bloom.Width != screenTarget.Width || bloom.Height != screenTarget.Height)
             {
-                ResetRenderTarget();
+                bloom?.Dispose();
+                bloom = new RenderTarget2D(graphicsDevice, screenTarget.Width, screenTarget.Height, false, screenTarget.Format, DepthFormat.None);
+            }
+            if (bloomMask == null || bloomMask.IsDisposed || bloomMask.Width != screenTarget.Width || bloomMask.Height != screenTarget.Height)
+            {
+                bloomMask?.Dispose();
+                bloomMask = new RenderTarget2D(graphicsDevice, screenTarget.Width, screenTarget.Height, false, screenTarget.Format, DepthFormat.None);
+            }
+            for (int i = 0; i < levels; i++)
+            {
+                int width = Math.Max(1, screenTarget.Width >> (i + 1));
+                int height = Math.Max(1, screenTarget.Height >> (i + 1));
+                RenderTarget2D target = bloomMipTargets[i];
+                if (target == null || target.IsDisposed || target.Width != width || target.Height != height)
+                {
+                    target?.Dispose();
+                    bloomMipTargets[i] = new RenderTarget2D(graphicsDevice, width, height, false, screenTarget.Format, DepthFormat.None);
+                }
             }
 
-            graphicsDevice.SetRenderTarget(rt2);
+            graphicsDevice.SetRenderTarget(screenTargetSwap);
             graphicsDevice.Clear(Color.Black);
-            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend);
-            Main.spriteBatch.Draw(rt1, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque);
+            Main.spriteBatch.Draw(screenTarget, Vector2.Zero, Color.White);
             Main.spriteBatch.End();
 
-
-            //Get HighLights & Down Samplers
-            graphicsDevice.SetRenderTarget(screen);
+            // Extract highlights at the original resolution before any downsampling.
+            graphicsDevice.SetRenderTarget(bloom);
             graphicsDevice.Clear(Color.Black);
-            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
+            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
             Bloom.Parameters["m"].SetValue(0.71f - bloomIntensity * 0.01f);
-            Bloom.CurrentTechnique.Passes[0].Apply();
-            Main.spriteBatch.Draw(rt1, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 1 / 3f, SpriteEffects.None, 0f);
+            Bloom.CurrentTechnique.Passes["Bloom"].Apply();
+            Main.spriteBatch.Draw(screenTargetSwap, Vector2.Zero, Color.White);
             Main.spriteBatch.End();
 
-            
-            //Kawase Blur
-            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
-            Effect shader = ModContent.Request<Effect>("Lights/Effects/KawaseBlur", AssetRequestMode.ImmediateLoad).Value;
-            shader.Parameters["uScreenResolution"].SetValue(new Vector2(rt1.Width, rt2.Height) / 2.5f);
-            shader.Parameters["uIntensity"].SetValue(1.00f+bloomCounts*0.005f);
-            for (int i = 0; i < bloomCounts; i++) 
+            // Reuse each mip on the way up; its previous contents are no longer needed.
+            RenderTarget2D source = bloom;
+            for (int i = 0; i < levels; i++)
             {
-                shader.Parameters["distance"].SetValue(i);
-                shader.CurrentTechnique.Passes[0].Apply();
-                graphicsDevice.SetRenderTarget(i%2==0? bloom:screen);
-                graphicsDevice.Clear(Color.Black);
-                Main.spriteBatch.Draw(i % 2 == 0 ? screen : bloom, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+                DrawBloomBlur(graphicsDevice, source, bloomMipTargets[i], "Downsample");
+                source = bloomMipTargets[i];
             }
+            for (int i = levels - 1; i >= 0; i--)
+            {
+                RenderTarget2D destination = i == 0 ? bloom : bloomMipTargets[i - 1];
+                DrawBloomBlur(graphicsDevice, source, destination, "Upsample");
+                source = destination;
+            }
+
+            // Blur only the attenuation mask; preserve the original scene for compositing.
+            graphicsDevice.SetRenderTarget(bloomMask);
+            graphicsDevice.Clear(Color.Black);
+            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
+            Bloom.Parameters["uMaskOffset"].SetValue(new Vector2(1f / screenTargetSwap.Width, 1f / screenTargetSwap.Height));
+            Bloom.CurrentTechnique.Passes["KawaseMask"].Apply();
+            Main.spriteBatch.Draw(screenTargetSwap, Vector2.Zero, Color.White);
             Main.spriteBatch.End();
 
-            //Blend Bloom to rt1
-
-            /*
-            graphicsDevice.SetRenderTarget(rt1);
-            Main.spriteBatch.Begin((SpriteSortMode)1, BlendState.Additive);
-            Bloom.Parameters["tex0"].SetValue((Texture)(object)rt2);
-            Bloom.Parameters["p"].SetValue(3f);
-            Bloom.Parameters["m2"].SetValue(bloomIntensity);
-            Bloom.CurrentTechnique.Passes["Blend"].Apply();
-            Main.spriteBatch.Draw((Texture2D)(object)screen, Vector2.Zero, (Rectangle?)null, Color.White, 0f, Vector2.Zero, 3f, (SpriteEffects)0, 0f);
-            Main.spriteBatch.End();*/
-
-            
-            graphicsDevice.SetRenderTarget(rt1);
+            graphicsDevice.SetRenderTarget(screenTarget);
             graphicsDevice.Clear(Color.Black);
-            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Additive);
-            Bloom.Parameters["tex0"].SetValue(rt2);
+            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
+            Bloom.Parameters["tex0"].SetValue(screenTargetSwap);
+            Bloom.Parameters["maskTexture"].SetValue(bloomMask);
             Bloom.Parameters["p"].SetValue(4.5f);
-            Bloom.Parameters["uScreenResolution"].SetValue(new Vector2(rt1.Width, rt2.Height));
-
             Bloom.Parameters["m2"].SetValue(bloomIntensity);
             Bloom.CurrentTechnique.Passes["Blend"].Apply();
-            Main.spriteBatch.Draw(bloomCounts%2==0? screen:bloom, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 3f, 0, 0f);
+            Main.spriteBatch.Draw(bloom, Vector2.Zero, Color.White);
             Main.spriteBatch.End();
         }
 
-        private float Gauss(float x, float sigma)
+        private void DrawBloomBlur(GraphicsDevice graphicsDevice, RenderTarget2D source, RenderTarget2D destination, string pass)
         {
-            return 0.4f * (float)Math.Exp(-0.5f * x * x / sigma);
+            float size = bloomLevel switch
+            {
+                1 => 2.5f,
+                2=>2f,
+                3=>1.25f,
+                _=>2f
+            };
+
+            graphicsDevice.SetRenderTarget(destination);
+            graphicsDevice.Clear(Color.Black);
+            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
+            dualBlur.Parameters["uHalfTexelSize"].SetValue(new Vector2(size / source.Width, size / source.Height));
+            dualBlur.CurrentTechnique.Passes[pass].Apply();
+            Main.spriteBatch.Draw(source, new Rectangle(0, 0, destination.Width, destination.Height), Color.White);
+            Main.spriteBatch.End();
         }
 
         public static void SetQuality(int q)
@@ -248,29 +251,25 @@ namespace Lights
             }
         }
 
-        private void UseLightAndShadow(GraphicsDevice gd, SpriteBatch sb, RenderTarget2D rt1, RenderTarget2D rt2)
+        private void UseLightAndShadow(GraphicsDevice gd, SpriteBatch sb, RenderTarget2D screenTarget, RenderTarget2D screenTargetSwap)
         {
+            gd.SetRenderTarget(screenTargetSwap);
+            gd.Clear(Color.Black);
+            Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.AlphaBlend);
+            Main.spriteBatch.Draw(screenTarget, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+            Main.spriteBatch.End();
+
             #region Create Light in (RT2D)light
             gd.SetRenderTarget(light);
             gd.Clear(Color.Black);
             sb.Begin((SpriteSortMode)1, BlendState.NonPremultiplied);
-            Light.Parameters["uScreenResolution"].SetValue(new Vector2(rt1.Width, rt1.Height));
-            Light.Parameters["uPos"].SetValue(ToScreenCoords(GetSunPos(rt1), rt1));
+            Light.Parameters["uScreenResolution"].SetValue(new Vector2(screenTarget.Width, screenTarget.Height));
+            Light.Parameters["uPos"].SetValue(ToScreenCoords(GetSunPos(screenTarget), screenTarget));
             String fileName = GetInstance<LightsConfig>().dayColor == "Classic" ? "ColorTex" : "ColorTex_Alt";//handles changing daylight colors
-            /*String fileName;//simply handles changing daylight colors
-			if (GetInstance<LightsConfig>().dayColor == "Classic")
-			{
-				fileName = "ColorTex";
-			}
-			else
-			{
-				fileName = "ColorTex_Alt";
-            }*/
             Light.Parameters["tex0"].SetValue((Texture)ModContent.Request<Texture2D>("Lights/" + (Main.dayTime ? fileName : "ColorTex2"), AssetRequestMode.AsyncLoad));
             Color colorOfTheSkies = Main.ColorOfTheSkies;
-            //I have no idea what these "num" variables were originally named or what they do, the name change is likely a result of decompilation
             float num = (1f - 1.2f * colorOfTheSkies.R * 0.3f + colorOfTheSkies.G * 0.6f + colorOfTheSkies.B * 0.1f) / 255f;
-            float lightIntensity = LightIntensity;
+            float lightIntensity = LightIntensity - 0.1f;
             if (Main.LocalPlayer.ZoneSnow && !Main.LocalPlayer.ZoneCrimson && !Main.LocalPlayer.ZoneCorrupt)
             {
                 num -= Main.bgAlphaFrontLayer[7] * 0.1f;
@@ -320,7 +319,7 @@ namespace Lights
             Light.CurrentTechnique.Passes["Light"].Apply();
             if (Main.LocalPlayer.Center.Y < Main.worldSurface * 16.0 + 800.0)
             {
-                sb.Draw((Texture2D)ModContent.Request<Texture2D>("Lights/PixelEX", AssetRequestMode.AsyncLoad), new Rectangle(0, 0, rt1.Width, rt1.Height), Color.White);
+                sb.Draw((Texture2D)ModContent.Request<Texture2D>("Lights/PixelEX", AssetRequestMode.AsyncLoad), new Rectangle(0, 0, screenTarget.Width, screenTarget.Height), Color.White);
             }
             sb.End();
             #endregion
@@ -329,7 +328,7 @@ namespace Lights
             gd.SetRenderTarget(screen);
             gd.Clear(Color.Black);
             sb.Begin((SpriteSortMode)1, BlendState.Additive);
-            Shadow.Parameters["uScreenResolution"].SetValue(new Vector2(rt1.Width, rt1.Height));
+            Shadow.Parameters["uScreenResolution"].SetValue(new Vector2(screenTarget.Width, screenTarget.Height));
             float num5 = Main.bgAlphaFrontLayer[2] * 0.09f;
             if (Main.desertBG[0] == 248)
             {
@@ -340,13 +339,12 @@ namespace Lights
             {
                 Shadow.Parameters["m"].SetValue(0.02f);
             }
-            Shadow.Parameters["uPos"].SetValue(ToScreenCoords(GetSunPos(rt1), rt1));
+            Shadow.Parameters["uPos"].SetValue(ToScreenCoords(GetSunPos(screenTarget), screenTarget));
             Shadow.CurrentTechnique.Passes[0].Apply();
-            sb.Draw((Texture2D)(object)rt1, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 0.333f, 0, 0f);
+            sb.Draw(screenTarget, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 0.333f, 0, 0f);
             sb.End();
             
-
-            gd.SetRenderTarget(bloom);
+            gd.SetRenderTarget(shadow);
             gd.Clear(Color.Black);
             sb.Begin(0, BlendState.Additive);
             if (Main.dayTime)
@@ -357,7 +355,7 @@ namespace Lights
                     float num7 = 0.55f * (30 - i) / num6;
                     Color white = Color.White;
                     white.A = (byte)(white.A * num7 * (ShadowIntensity + 0.1f) * (num3 * 0.5f - 0.1f));
-                    sb.Draw((Texture2D)(object)screen, GetSunPos(rt1) / 3f, null, white, 0f, GetSunPos(rt1) / 3f, 1f * (1f + i * (1f / quality) * (0.014f + quality * 0.01f)), 0, 0f);
+                    sb.Draw(screen, GetSunPos(screenTarget) / 3f, null, white, 0f, GetSunPos(screenTarget) / 3f, 1f * (1f + i * (1f / quality) * (0.012f + quality * 0.01f)), 0, 0f);
                 }
             }
             else
@@ -366,18 +364,23 @@ namespace Lights
                 {
                     float num8 = 190f;
                     float num9 = (20f - j) / num8;
-                    sb.Draw((Texture2D)(object)screen, GetSunPos(rt1) / 3f, null, Color.White * num9, 0f, GetSunPos(rt1) / 3f, 1f * (1f + j * 0.01f), 0, 0f);
+                    sb.Draw(screen, GetSunPos(screenTarget) / 3f, null, Color.White * num9, 0f, GetSunPos(screenTarget) / 3f, 1f * (1f + j * 0.01f), 0, 0f);
                 }
             }
             sb.End();
             #endregion
 
             #region Blend Light & Shadow into rt1
-            gd.SetRenderTarget(rt1);
+            gd.SetRenderTarget(screenTarget);
+            gd.Clear(Color.Black);
+            Main.spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+            Main.spriteBatch.Draw(screenTargetSwap, Vector2.Zero, null, Color.White, 0f, Vector2.Zero, 1f, SpriteEffects.None, 0f);
+            Main.spriteBatch.End();
+
             sb.Begin((SpriteSortMode)1, BlendState.Additive);
-            Shadow.Parameters["tex0"].SetValue((Texture)(object)bloom);
+            Shadow.Parameters["tex0"].SetValue((Texture)(object)shadow);
             Shadow.CurrentTechnique.Passes[1].Apply();
-            sb.Draw((Texture2D)(object)light, Vector2.Zero, Color.White);
+            sb.Draw(light, Vector2.Zero, Color.White);
             sb.End();
             #endregion
         }
@@ -401,15 +404,5 @@ namespace Lights
             }
             return new Vector2(num4, num6);
         }
-
-        /*public Lights()
-        {
-            Instance = this;
-        }
-        public static Lights Instance
-        {
-            get;
-            set;
-        }*/
     }
 }

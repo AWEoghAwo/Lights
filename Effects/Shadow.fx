@@ -28,9 +28,12 @@ float4 PixelShaderFunction(float2 coords : TEXCOORD0) : COLOR0//提取蓝色通�
     float4 c = tex2D(uImage0,coords);
     float4 finalColor = float4(0, 0, 0, 0);
     //float2 offset = (coords - uPos) * float2(uScreenResolution.x / uScreenResolution.y, 1);
-    if (c.b < m)
-        finalColor = float4(1, 1, 1, pow(1 - c.b,0.75));
+    //if (c.b < m)
+    float a1 = pow(1 - c.b,0.75);
+    float a2 = 1 - smoothstep(0.1,1,c.b);
+    float a = lerp(a1,a2,1-c.b);
 
+    finalColor = float4(1, 1, 1, a);
     return finalColor;
 }
 

@@ -42,7 +42,7 @@ Configs: {
 		}
 
 		BloomCounts: {
-			Label: Bloom Count
+			Label: Bloom Level
 			Tooltip: ""
 		}
 

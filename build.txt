@@ -1,5 +1,7 @@
 displayName = Lights And Shadows
 author = yiyang233
-version = 1.4.1
+version = 1.5
 side = Client
+hideCode = true
+hideResources = true
 buildIgnore = .sln, *.csproj, *.user, obj\*, bin\*, .vs\*, Properties\*
