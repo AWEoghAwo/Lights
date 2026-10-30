@@ -112,17 +112,30 @@ namespace Lights
             Shadow = null;
             Bloom = null;
             dualBlur = null;
-            bloom?.Dispose();
-            bloomMask?.Dispose();
+            // Unload runs on a worker thread; FNA graphics resources must be disposed on the main thread.
+            RenderTarget2D[] targets = new RenderTarget2D[5 + bloomMipTargets.Length];
+            targets[0] = screen;
+            targets[1] = light;
+            targets[2] = shadow;
+            targets[3] = bloom;
+            targets[4] = bloomMask;
             bloomMask = null;
             for (int i = 0; i < bloomMipTargets.Length; i++)
             {
-                bloomMipTargets[i]?.Dispose();
+                targets[5 + i] = bloomMipTargets[i];
                 bloomMipTargets[i] = null;
             }
             screen = null;
             light = null;
+            shadow = null;
             bloom = null;
+            Main.QueueMainThreadAction(() =>
+            {
+                foreach (RenderTarget2D target in targets)
+                {
+                    target?.Dispose();
+                }
+            });
         }
 
         public void FilterManager_EndCapture(orig_EndCapture orig, FilterManager self, RenderTarget2D finalTexture, RenderTarget2D screenTarget1, RenderTarget2D screenTarget2, Color clearColor)
@@ -217,7 +230,7 @@ namespace Lights
             Main.spriteBatch.Begin(SpriteSortMode.Immediate, BlendState.Opaque, SamplerState.LinearClamp, DepthStencilState.None, RasterizerState.CullNone);
             Bloom.Parameters["tex0"].SetValue(screenTargetSwap);
             Bloom.Parameters["maskTexture"].SetValue(bloomMask);
-            Bloom.Parameters["p"].SetValue(4.5f);
+            Bloom.Parameters["p"].SetValue(4f);
             Bloom.Parameters["m2"].SetValue(bloomIntensity);
             Bloom.CurrentTechnique.Passes["Blend"].Apply();
             Main.spriteBatch.Draw(bloom, Vector2.Zero, Color.White);
@@ -229,7 +242,7 @@ namespace Lights
             float size = bloomLevel switch
             {
                 1 => 2.5f,
-                2=>2f,
+                2=>1.5f,
                 3=>1.25f,
                 _=>2f
             };

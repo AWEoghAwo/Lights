@@ -51,8 +51,8 @@ float4 Blend(float2 coords : TEXCOORD0) : COLOR0
     float brightness = max(mask.r, max(mask.g, mask.b));
 
     float attenuation1 = pow(saturate(1 - brightness), p);
-    float attenuation2 = 1 - smoothstep(0.2, 0.7, brightness);
-    float3 result = original.rgb + bloomLight * lerp(attenuation1,attenuation2,brightness);
+    float attenuation2 = 1 - smoothstep(0.0, 0.75, brightness);
+    float3 result = original.rgb + bloomLight * lerp(attenuation1,attenuation2, 0.9 - brightness);
     return float4(result,original.a);
 }
 
